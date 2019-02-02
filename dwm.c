@@ -115,6 +115,7 @@ struct Monitor {
 	char ltsymbol[16];
 	float mfact;
 	int nmaster;
+	int nstackl, nstackr;
 	int num;
 	int by;               /* bar geometry */
 	int mx, my, mw, mh;   /* screen size */
@@ -175,6 +176,8 @@ static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
 static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
+static void incnstackl(const Arg *arg);
+static void incnstackr(const Arg *arg);
 static void keypress(XEvent *e);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
@@ -636,6 +639,8 @@ createmon(void)
 	m->tagset[0] = m->tagset[1] = 1;
 	m->mfact = mfact;
 	m->nmaster = nmaster;
+	m->nstackl = nstackl;
+	m->nstackr = nstackr;
 	m->showbar = showbar;
 	m->topbar = topbar;
 	m->lt[0] = &layouts[0];
@@ -967,6 +972,20 @@ void
 incnmaster(const Arg *arg)
 {
 	selmon->nmaster = MAX(selmon->nmaster + arg->i, 0);
+	arrange(selmon);
+}
+
+void
+incnstackl(const Arg *arg)
+{
+	selmon->nstackl = MAX(selmon->nstackl + arg->i, !selmon->nstackr);
+	arrange(selmon);
+}
+
+void
+incnstackr(const Arg *arg)
+{
+	selmon->nstackr = MAX(selmon->nstackr + arg->i, !selmon->nstackl);
 	arrange(selmon);
 }
 
@@ -1670,29 +1689,57 @@ tagmon(const Arg *arg)
 }
 
 void
+tilecol(Monitor *m, Client **c, unsigned int n, unsigned int x, unsigned int w)
+{
+	unsigned int h, y;
+
+	for (y = 0; n > 0; n--, *c = nexttiled((*c)->next)) {
+		h = (m->wh - y) / n;
+		resize(*c, m->wx + x, m->wy + y, w - (2*(*c)->bw), h - (2*(*c)->bw), 0);
+		y += HEIGHT(*c);
+	}
+}
+
+void
 tile(Monitor *m)
 {
-	unsigned int i, n, h, mw, my, ty;
+	unsigned int n, nm, mw, mx;
+	unsigned int nl, nr, ns, sw, sx, rest, w;
 	Client *c;
 
 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	if (n == 0)
 		return;
-
-	if (n > m->nmaster)
-		mw = m->nmaster ? m->ww * m->mfact : 0;
-	else
-		mw = m->ww;
-	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
-		if (i < m->nmaster) {
-			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 0);
-			my += HEIGHT(c);
-		} else {
-			h = (m->wh - ty) / (n - i);
-			resize(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 0);
-			ty += HEIGHT(c);
-		}
+	nm = n > m->nmaster ? m->nmaster : n;
+	mw = nm ? m->ww * m->mfact : 0;
+	ns = MIN(n - nm, m->nstackl + m->nstackr);
+	nr = MIN(ns, m->nstackr);
+	nl = ns - nr;
+	sw = ns ? (m->ww - mw) / ns : 0;
+	mx = nl * sw;
+	rest = m->ww - mw - sw * ns;
+	c = nexttiled(m->clients);
+	/* master area */
+	if (nm) {
+		mw += rest;
+		rest = 0;
+		tilecol(m, &c, nm, mx, mw);
+		n -= nm;
+	}
+	/* right stack cols */
+	for (sx = mx + mw; nr > 0; nr--, sx += w, n -= ns) {
+		ns = n / (nl + nr);
+		w = sw + rest;
+		rest = 0;
+		tilecol(m, &c, ns, sx, w);
+	}
+	/* left stack cols */
+	for (sx = 0; nl > 0; nl--, sx += w, n -= ns) {
+		ns = n / nl;
+		w = sw + rest;
+		rest = 0;
+		tilecol(m, &c, ns, sx, w);
+	}
 }
 
 void
