@@ -1712,12 +1712,13 @@ tile(Monitor *m)
 		return;
 	nm = n > m->nmaster ? m->nmaster : n;
 	mw = nm ? m->ww * m->mfact : 0;
-	ns = MIN(n - nm, m->nstackl + m->nstackr);
+	ns = m->nstackl + m->nstackr;
+	sw = (m->ww - mw) / ns;
+	mx = m->nstackl * sw;
+	rest = m->ww - mw - sw * ns;
+	ns = MIN(n - nm, ns);
 	nr = MIN(ns, m->nstackr);
 	nl = ns - nr;
-	sw = ns ? (m->ww - mw) / ns : 0;
-	mx = nl * sw;
-	rest = m->ww - mw - sw * ns;
 	c = nexttiled(m->clients);
 	/* master area */
 	if (nm) {
